@@ -1,4 +1,4 @@
-const CACHE_NAME = 'braise-v4';
+const CACHE_NAME = 'mattfocus-v1';
 const ASSETS = [
   './',
   './index.html',
