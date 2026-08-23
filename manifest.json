@@ -1,6 +1,6 @@
 {
-  "name": "Braise — Minuteur Pomodoro",
-  "short_name": "Braise",
+  "name": "MattFocus — Minuteur Pomodoro",
+  "short_name": "MattFocus",
   "description": "Un minuteur Pomodoro simple : un grand chiffre sur fond noir, une sonnerie à la fin.",
   "start_url": "./index.html",
   "scope": "./",
