@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-<title>Braise — Minuteur Pomodoro</title>
+<title>MattFocus — Minuteur Pomodoro</title>
 <meta name="description" content="Un minuteur Pomodoro simple : un grand chiffre, un fond noir, une sonnerie à la fin.">
 <meta name="theme-color" content="#0a0a0a">
 <link rel="manifest" href="manifest.json">
@@ -361,6 +361,55 @@
   }
   .lap-row .lap-num { color: #4a453f; }
 
+  /* ---- Pomodoro ---- */
+  .pomodoro-wrap {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(20px, 3.5vh, 32px);
+    width: 100%;
+  }
+
+  .pomo-dots { display: flex; gap: 10px; }
+  .pomo-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--ring-track);
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+  }
+  .pomo-dot.filled { background: var(--ember); box-shadow: 0 0 6px rgba(255,77,46,0.6); }
+  .pomo-dot.current { background: var(--ember-glow); box-shadow: 0 0 10px rgba(255,140,92,0.7); }
+
+  .pomo-settings {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .pomo-settings label { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .pomo-settings label > span:first-child {
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .pomo-settings .unit { font-size: 0.62rem; color: #4a453f; letter-spacing: 0.05em; }
+  .pomo-settings input {
+    width: 64px;
+    background: var(--bg-elevated);
+    border: 1px solid #2a2521;
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    text-align: center;
+    padding: 8px 4px;
+    outline: none;
+  }
+  .pomo-settings input:focus { border-color: var(--ember); }
+  .pomo-settings input:disabled { opacity: 0.45; }
+
   @media (max-height: 600px) {
     .app { gap: 16px; }
   }
@@ -394,6 +443,7 @@
   <div class="mode-tabs">
     <button class="mode-tab active" id="modeTimerBtn">Minuteur</button>
     <button class="mode-tab" id="modeStopwatchBtn">Chrono</button>
+    <button class="mode-tab" id="modePomodoroBtn">Pomodoro</button>
   </div>
 
   <div class="ring-wrap" id="ringWrap">
@@ -443,6 +493,54 @@
     </div>
     <div class="laps" id="lapsList"></div>
   </div>
+
+  <!-- ---- Pomodoro mode (hidden until switched to) ---- -->
+  <div class="pomodoro-wrap" id="pomodoroWrap">
+    <div class="ring-wrap" id="pomoRingWrap">
+      <svg viewBox="0 0 200 200">
+        <circle class="ring-track" cx="100" cy="100" r="92"/>
+        <circle class="ring-progress" id="pomoRingProgress" cx="100" cy="100" r="92"
+          stroke-dasharray="578" stroke-dashoffset="0"/>
+      </svg>
+      <div class="time-display" id="pomoTimeDisplay">25:00</div>
+      <div class="session-label" id="pomoSessionLabel">travail</div>
+    </div>
+
+    <div class="pomo-dots" id="pomoDots"></div>
+
+    <div class="pomo-settings" id="pomoSettings">
+      <label>
+        <span>Travail</span>
+        <input type="number" id="pomoWorkInput" min="1" max="180" inputmode="numeric">
+        <span class="unit">min</span>
+      </label>
+      <label>
+        <span>Pause</span>
+        <input type="number" id="pomoBreakInput" min="1" max="60" inputmode="numeric">
+        <span class="unit">min</span>
+      </label>
+      <label>
+        <span>Pause longue</span>
+        <input type="number" id="pomoLongBreakInput" min="1" max="90" inputmode="numeric">
+        <span class="unit">min</span>
+      </label>
+    </div>
+
+    <div class="controls" id="pomoControls">
+      <button class="btn-ghost" id="pomoResetBtn" aria-label="Réinitialiser">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+      </button>
+      <button class="btn-circle" id="pomoPlayBtn" aria-label="Démarrer">
+        <svg id="pomoPlayIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <svg id="pomoPauseIcon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+      </button>
+      <button class="btn-ghost" id="pomoSkipBtn" aria-label="Passer à la phase suivante">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 5v14l8-7z"/><path d="M13 5v14l8-7z"/></svg>
+      </button>
+    </div>
+
+    <div class="footer-hint" id="pomoHint">s'enchaîne tout seul · pause longue toutes les 4 sessions</div>
+  </div>
 </div>
 
 <div class="modal-backdrop" id="modalBackdrop">
@@ -459,14 +557,14 @@
 <script>
 (() => {
   const DEFAULT_PRESETS = [5, 15, 25, 50];
-  let presets = JSON.parse(localStorage.getItem('braise_presets') || 'null') || DEFAULT_PRESETS.slice();
-  let activeMinutes = parseFloat(localStorage.getItem('braise_active') || '25');
+  let presets = JSON.parse(localStorage.getItem('mattfocus_presets') || 'null') || DEFAULT_PRESETS.slice();
+  let activeMinutes = parseFloat(localStorage.getItem('mattfocus_active') || '25');
 
   let totalSeconds = activeMinutes * 60;
   let remaining = totalSeconds;
   let running = false;
   let intervalId = null;
-  let soundOn = JSON.parse(localStorage.getItem('braise_sound') ?? 'true');
+  let soundOn = JSON.parse(localStorage.getItem('mattfocus_sound') ?? 'true');
   let lastTick = null;
 
   const timeDisplay = document.getElementById('timeDisplay');
@@ -497,7 +595,7 @@
     timeDisplay.textContent = fmt(remaining);
     const frac = totalSeconds > 0 ? remaining / totalSeconds : 0;
     ringProgress.setAttribute('stroke-dashoffset', CIRC * (1 - frac));
-    document.title = running ? `${fmt(remaining)} — Braise` : 'Braise — Minuteur Pomodoro';
+    document.title = running ? `${fmt(remaining)} — MattFocus` : 'MattFocus — Minuteur Pomodoro';
   }
 
   function renderPresets() {
@@ -529,7 +627,7 @@
   }
 
   function savePresets() {
-    localStorage.setItem('braise_presets', JSON.stringify(presets));
+    localStorage.setItem('mattfocus_presets', JSON.stringify(presets));
   }
 
   function selectMinutes(min) {
@@ -537,7 +635,7 @@
     activeMinutes = min;
     totalSeconds = min * 60;
     remaining = totalSeconds;
-    localStorage.setItem('braise_active', min);
+    localStorage.setItem('mattfocus_active', min);
     sessionLabel.textContent = 'prêt';
     renderPresets();
     updateDisplay();
@@ -618,9 +716,9 @@
     sessionLabel.textContent = 'terminé';
     if (soundOn) playChime();
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-    document.title = '✓ Terminé — Braise';
+    document.title = '✓ Terminé — MattFocus';
     if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification('Braise', { body: 'Le temps est écoulé.' });
+      new Notification('MattFocus', { body: 'Le temps est écoulé.' });
     }
   }
 
@@ -659,7 +757,7 @@
   resetBtn.onclick = reset;
   soundBtn.onclick = () => {
     soundOn = !soundOn;
-    localStorage.setItem('braise_sound', JSON.stringify(soundOn));
+    localStorage.setItem('mattfocus_sound', JSON.stringify(soundOn));
     soundBtn.style.opacity = soundOn ? '1' : '0.4';
   };
   soundBtn.style.opacity = soundOn ? '1' : '0.4';
@@ -787,30 +885,35 @@
   swResetBtn.onclick = swReset;
   swLapBtn.onclick = swLap;
 
+  const modePomodoroBtn = document.getElementById('modePomodoroBtn');
+  const pomodoroWrap = document.getElementById('pomodoroWrap');
+
   function setMode(newMode) {
     mode = newMode;
     const isTimer = mode === 'timer';
+    const isStopwatch = mode === 'stopwatch';
+    const isPomodoro = mode === 'pomodoro';
 
     modeTimerBtn.classList.toggle('active', isTimer);
-    modeStopwatchBtn.classList.toggle('active', !isTimer);
+    modeStopwatchBtn.classList.toggle('active', isStopwatch);
+    modePomodoroBtn.classList.toggle('active', isPomodoro);
 
     ringWrapEl.style.display = isTimer ? 'flex' : 'none';
     presetsEl2.style.display = isTimer ? 'flex' : 'none';
     timerControls.style.display = isTimer ? 'flex' : 'none';
     timerHint.style.display = isTimer ? 'block' : 'none';
-    stopwatchWrap.style.display = isTimer ? 'none' : 'flex';
+    stopwatchWrap.style.display = isStopwatch ? 'flex' : 'none';
+    pomodoroWrap.style.display = isPomodoro ? 'flex' : 'none';
 
-    if (isTimer) {
-      // leaving stopwatch: stop it so it doesn't run silently in the background
-      if (swRunning) swStop();
-    } else {
-      // leaving timer: pause it so it doesn't run silently in the background
-      if (running) pause();
-    }
+    // Pause whichever mode we're leaving so nothing runs silently in the background
+    if (!isTimer && running) pause();
+    if (!isStopwatch && swRunning) swStop();
+    if (!isPomodoro && pomoRunning) pomoPause();
   }
 
   modeTimerBtn.onclick = () => setMode('timer');
   modeStopwatchBtn.onclick = () => setMode('stopwatch');
+  modePomodoroBtn.onclick = () => setMode('pomodoro');
 
   document.addEventListener('keydown', (e) => {
     if (modalBackdrop.classList.contains('open')) return;
@@ -820,7 +923,215 @@
     if (e.key === 'r' || e.key === 'R') swReset();
   });
 
+  document.addEventListener('keydown', (e) => {
+    if (modalBackdrop.classList.contains('open')) return;
+    if (mode !== 'pomodoro') return;
+    if (e.code === 'Space') { e.preventDefault(); pomoPlayBtn.click(); }
+  });
+
   swRender();
+
+  // ================= POMODORO MODE =================
+  const pomoRingWrapEl = document.getElementById('pomoRingWrap');
+  const pomoRingProgress = document.getElementById('pomoRingProgress');
+  const pomoTimeDisplay = document.getElementById('pomoTimeDisplay');
+  const pomoSessionLabel = document.getElementById('pomoSessionLabel');
+  const pomoDots = document.getElementById('pomoDots');
+  const pomoWorkInput = document.getElementById('pomoWorkInput');
+  const pomoBreakInput = document.getElementById('pomoBreakInput');
+  const pomoLongBreakInput = document.getElementById('pomoLongBreakInput');
+  const pomoPlayBtn = document.getElementById('pomoPlayBtn');
+  const pomoPlayIcon = document.getElementById('pomoPlayIcon');
+  const pomoPauseIcon = document.getElementById('pomoPauseIcon');
+  const pomoResetBtn = document.getElementById('pomoResetBtn');
+  const pomoSkipBtn = document.getElementById('pomoSkipBtn');
+
+  const POMO_CIRC = 2 * Math.PI * 92;
+  pomoRingProgress.setAttribute('stroke-dasharray', POMO_CIRC);
+
+  const SESSIONS_PER_LONG_BREAK = 4;
+
+  let pomoWorkMin = parseFloat(localStorage.getItem('mattfocus_pomo_work') || '25');
+  let pomoBreakMin = parseFloat(localStorage.getItem('mattfocus_pomo_break') || '5');
+  let pomoLongBreakMin = parseFloat(localStorage.getItem('mattfocus_pomo_longbreak') || '15');
+
+  pomoWorkInput.value = pomoWorkMin;
+  pomoBreakInput.value = pomoBreakMin;
+  pomoLongBreakInput.value = pomoLongBreakMin;
+
+  let pomoPhase = 'work'; // 'work' | 'break' | 'longbreak'
+  let pomoCompletedWork = 0;
+  let pomoTotalSeconds = pomoWorkMin * 60;
+  let pomoRemaining = pomoTotalSeconds;
+  let pomoRunning = false;
+  let pomoIntervalId = null;
+  let pomoLastTick = null;
+
+  function pomoPhaseMinutes(phase) {
+    if (phase === 'work') return pomoWorkMin;
+    if (phase === 'longbreak') return pomoLongBreakMin;
+    return pomoBreakMin;
+  }
+
+  function pomoPhaseLabel(phase) {
+    if (phase === 'work') return 'travail';
+    if (phase === 'longbreak') return 'pause longue';
+    return 'pause';
+  }
+
+  function pomoFmt(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  function pomoUpdateDisplay() {
+    pomoTimeDisplay.textContent = pomoFmt(pomoRemaining);
+    const frac = pomoTotalSeconds > 0 ? pomoRemaining / pomoTotalSeconds : 0;
+    pomoRingProgress.setAttribute('stroke-dashoffset', POMO_CIRC * (1 - frac));
+    document.title = pomoRunning ? `${pomoFmt(pomoRemaining)} — ${pomoPhaseLabel(pomoPhase)}` : 'MattFocus — Minuteur Pomodoro';
+  }
+
+  function pomoRenderDots() {
+    pomoDots.innerHTML = '';
+    const posInCycle = pomoCompletedWork % SESSIONS_PER_LONG_BREAK;
+    for (let i = 0; i < SESSIONS_PER_LONG_BREAK; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'pomo-dot';
+      if (i < posInCycle) dot.classList.add('filled');
+      else if (i === posInCycle && pomoPhase === 'work') dot.classList.add('current');
+      pomoDots.appendChild(dot);
+    }
+  }
+
+  function pomoSetSettingsEnabled(enabled) {
+    pomoWorkInput.disabled = !enabled;
+    pomoBreakInput.disabled = !enabled;
+    pomoLongBreakInput.disabled = !enabled;
+  }
+
+  function pomoSetPhase(phase) {
+    pomoPhase = phase;
+    pomoSessionLabel.textContent = pomoPhaseLabel(phase);
+    pomoTotalSeconds = pomoPhaseMinutes(phase) * 60;
+    pomoRemaining = pomoTotalSeconds;
+    pomoRenderDots();
+    pomoUpdateDisplay();
+  }
+
+  function pomoTick() {
+    const now = Date.now();
+    const delta = (now - pomoLastTick) / 1000;
+    pomoLastTick = now;
+    pomoRemaining -= delta;
+    if (pomoRemaining <= 0) {
+      pomoRemaining = 0;
+      pomoUpdateDisplay();
+      pomoAdvance();
+      return;
+    }
+    pomoUpdateDisplay();
+  }
+
+  function pomoStart() {
+    if (pomoRemaining <= 0) pomoRemaining = pomoTotalSeconds;
+    pomoRunning = true;
+    pomoLastTick = Date.now();
+    pomoIntervalId = setInterval(pomoTick, 200);
+    pomoPlayIcon.style.display = 'none';
+    pomoPauseIcon.style.display = 'block';
+    pomoRingWrapEl.classList.add('breathing');
+    pomoSetSettingsEnabled(false);
+  }
+
+  function pomoPause() {
+    pomoRunning = false;
+    clearInterval(pomoIntervalId);
+    pomoPlayIcon.style.display = 'block';
+    pomoPauseIcon.style.display = 'none';
+    pomoRingWrapEl.classList.remove('breathing');
+    pomoSetSettingsEnabled(true);
+  }
+
+  function pomoReset() {
+    pomoPause();
+    pomoCompletedWork = 0;
+    pomoSetPhase('work');
+  }
+
+  // Called when a phase's time runs out: chime/notify, move to the next phase,
+  // and auto-start it — this is the "ça s'enchaîne tout seul" behaviour.
+  function pomoAdvance() {
+    pomoPause();
+    if (soundOn) playChime();
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification('MattFocus', {
+        body: pomoPhase === 'work' ? 'Session terminée, place à la pause.' : 'Pause terminée, au travail !'
+      });
+    }
+
+    if (pomoPhase === 'work') {
+      pomoCompletedWork += 1;
+      const nextPhase = (pomoCompletedWork % SESSIONS_PER_LONG_BREAK === 0) ? 'longbreak' : 'break';
+      pomoSetPhase(nextPhase);
+    } else {
+      pomoSetPhase('work');
+    }
+    pomoStart();
+  }
+
+  function pomoSkip() {
+    pomoPause();
+    pomoRemaining = 0;
+    pomoAdvance();
+  }
+
+  pomoPlayBtn.onclick = () => {
+    if (audioCtx === null) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){}
+    }
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    pomoRunning ? pomoPause() : pomoStart();
+  };
+  pomoResetBtn.onclick = pomoReset;
+  pomoSkipBtn.onclick = pomoSkip;
+
+  function pomoSaveSettings() {
+    localStorage.setItem('mattfocus_pomo_work', pomoWorkMin);
+    localStorage.setItem('mattfocus_pomo_break', pomoBreakMin);
+    localStorage.setItem('mattfocus_pomo_longbreak', pomoLongBreakMin);
+  }
+
+  function pomoClampInput(val, min, max, fallback) {
+    const n = parseFloat(val);
+    if (!n || n <= 0) return fallback;
+    return Math.min(max, Math.max(min, n));
+  }
+
+  pomoWorkInput.addEventListener('change', () => {
+    pomoWorkMin = pomoClampInput(pomoWorkInput.value, 1, 180, pomoWorkMin);
+    pomoWorkInput.value = pomoWorkMin;
+    pomoSaveSettings();
+    if (pomoPhase === 'work' && !pomoRunning) pomoSetPhase('work');
+  });
+  pomoBreakInput.addEventListener('change', () => {
+    pomoBreakMin = pomoClampInput(pomoBreakInput.value, 1, 60, pomoBreakMin);
+    pomoBreakInput.value = pomoBreakMin;
+    pomoSaveSettings();
+    if (pomoPhase === 'break' && !pomoRunning) pomoSetPhase('break');
+  });
+  pomoLongBreakInput.addEventListener('change', () => {
+    pomoLongBreakMin = pomoClampInput(pomoLongBreakInput.value, 1, 90, pomoLongBreakMin);
+    pomoLongBreakInput.value = pomoLongBreakMin;
+    pomoSaveSettings();
+    if (pomoPhase === 'longbreak' && !pomoRunning) pomoSetPhase('longbreak');
+  });
+
+  pomoSetSettingsEnabled(true);
+  pomoSetPhase('work');
 
   // Register service worker for offline / installable PWA
   if ('serviceWorker' in navigator) {
